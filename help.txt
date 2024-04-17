@@ -1,0 +1,16 @@
+ >  cd Raffle
+ change directory to your new project
+
+ >  npx blueprint build
+ choose a smart contract and build it
+
+ >  npx blueprint test
+ run the default project test suite
+
+ >  npx blueprint run
+ choose a script and run it (eg. a deploy script)
+
+ >  npx blueprint create AnotherContract
+ create all the necessary files for another new contract
+
+For help and docs visit https://github.com/ton-community/blueprint

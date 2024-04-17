@@ -1,0 +1,192 @@
+#include "imports/stdlib.fc";
+
+const int deposit = 100000000;
+const int owner_fee = 100000000;
+const int min_balance = 10000000;
+
+;; storage scheme
+;; 1 - owner address
+;; 2 - previous winner address
+;; 3 - number of participants
+;; participants
+
+() restart_raffle() impure inline {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    set_data(begin_cell().store_slice(owner_address).store_slice(prev_winner).store_int(0, 16).end_cell());
+}
+
+() reward_winner(slice winner_address) impure inline {
+
+    var [balance, _] = get_balance();
+
+    throw_unless(444, balance > min_balance + owner_fee);
+
+    int withdraw_amount = min(100000000, balance - min_balance - owner_fee);
+
+    int mode = 0;
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(winner_address)
+            .store_coins(withdraw_amount)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+    send_raw_message(msg.end_cell(), mode);
+}
+
+() raffle() impure inline {
+    randomize_lt(); int winner = rand(11);
+    int i = 0;
+
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    int num_part = contract_data~load_int(16);
+
+    while (i < 11) {
+
+        slice cur_addr = contract_data~load_msg_addr();
+        if (i == winner) {
+            reward_winner(cur_addr);
+            i = 11;
+        } else {
+            i = i + 1;
+        }
+    }
+}
+
+() store_address(slice new_address) impure inline {
+
+    slice contract_data = get_data().begin_parse();
+
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    ;; Max number of participants - 11
+    int num_participants = contract_data~load_int(16);
+
+    throw_unless(666, num_participants <= 10);
+    
+    ;; new_data - builder
+    builder new_data = begin_cell().store_slice(owner_address).store_slice(prev_winner).store_int(num_participants + 1, 16);
+    
+    repeat(num_participants){
+        slice participant = contract_data~load_msg_addr();
+        
+        if (equal_slice_bits(participant, new_address)) {
+            ;; reject the transaction
+            throw(777);
+        }
+        new_data~store_slice(participant);
+    }
+
+    new_data~store_slice(new_address);
+
+    set_data(new_data.end_cell());
+
+    if (num_participants == 11) {
+        raffle();
+        restart_raffle();
+    }
+
+}
+
+() ownerWithdraw(slice sender_address) impure inline {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+
+    ;; Throw Exception unless the sender is the owner
+    throw_unless(111, equal_slice_bits(sender_address, owner_address));
+
+    var [balance, _] = get_balance();
+
+    ;; Throw Exception unless the balance is greater than the minimum balance
+    throw_unless(444, balance > min_balance);
+
+    int withdraw_amount = min(owner_fee, balance - min_balance);
+
+    int mode = 0;
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(owner_address)
+            .store_coins(withdraw_amount)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+    send_raw_message(msg.end_cell(), mode);
+}
+
+;; OPCODES : 1 - deposit, 2 - withdraw
+;; Msg Body should store 3 bits integer opcode
+() recv_internal(int msg_value, cell in_msg, slice in_msg_body) impure {
+
+    throw_unless(555, msg_value == deposit);
+
+    slice cs = in_msg.begin_parse();
+    int msg_flags = cs~load_int(3);
+
+    int is_bounced = cs~load_int(1);
+    if (is_bounced == 1){
+        return();
+    }
+
+    slice sender_address = cs~load_msg_addr();
+    int op = in_msg_body~load_int(16);
+    
+    
+    if (op == 1) {
+        ;; problem here
+        store_address(sender_address);
+        return();
+    }
+
+    if (op == 2) {
+        ownerWithdraw(sender_address);
+        return();
+    }
+    
+    ;; Throw exception unless valid opcode is provided
+    throw(999);
+
+}
+
+int get_num_participants() method_id {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    int num_participants = contract_data~load_int(16);
+    return num_participants;
+}
+
+slice get_recent_winner() method_id {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    return prev_winner;
+}
+
+slice get_owner_address() method_id {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    
+    return owner_address;
+}
+
+int get_current_balance() method_id {
+    var [balance, _] = get_balance();
+    return balance;
+}
+
+slice get_first_addr() method_id {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+
+    int num_participants = contract_data~load_int(16);
+
+    return contract_data~load_msg_addr();
+}
