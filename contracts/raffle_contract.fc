@@ -4,11 +4,12 @@ const int const::deposit = 1000000000;
 const int const::owner_fee = 1000000000;
 const int const::min_balance = 10000000;
 const int const::winner_reward = 4000000000;
+const int const::max_participants = 5;
 
 ;; storage scheme
 ;; 1 - owner address
-;; 2 - previous winner
-;; 3 - total number of participants
+;; 2 - previous winner address
+;; 3 - current number of participants (max. const::max_participants)
 ;; 4 - dictionary of participants (after first participant entering)
 
 () restart_raffle(slice winner) impure inline {
@@ -19,26 +20,28 @@ const int const::winner_reward = 4000000000;
 }
 
 () reward_winner(slice winner_address) impure inline {
-
     var [balance, _] = get_balance();
 
+    ;; Throw Exception if contract balance is insufficient to reward the winner
     throw_unless(444, balance > const::min_balance + const::owner_fee);
 
     int withdraw_amount = min(const::winner_reward, balance - const::min_balance - const::owner_fee);
 
+    slice winner_congrats = "Congrats to the winner! You have won the raffle!";
     int mode = 0;
     var msg = begin_cell()
             .store_uint(0x18, 6)
             .store_slice(winner_address)
             .store_coins(withdraw_amount)
-            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 32)
+            .store_slice(winner_congrats);
 
     send_raw_message(msg.end_cell(), mode);
 }
 
 slice raffle() impure inline {
-    randomize_lt(); int winner = rand(11);
-    int i = 0;
+    randomize_lt(); int winner = rand(const::max_participants);
 
     slice contract_data = get_data().begin_parse();
     slice owner_address = contract_data~load_msg_addr();
@@ -47,19 +50,18 @@ slice raffle() impure inline {
     int num_part = contract_data~load_int(16);
     cell participants = contract_data~load_dict();
 
+    int i = 0;
     builder winner_builder = begin_cell();
-    while (i < 5) {
-
+    while (i < const::max_participants) {
         var (participant_address, flag) = participants.idict_get?(16, i);
 
-        if (flag == 0) {
-            throw(666);
-        }
+        ;; Participants dictionary is corrupted
+        throw_if(666, flag == 0);
 
         if (i == winner) {
             winner_builder~store_slice(participant_address); 
             reward_winner(participant_address);
-            i = 5;
+            i = const::max_participants;
         } else {
             i = i + 1;
         }
@@ -71,8 +73,22 @@ slice raffle() impure inline {
     return winner_address~load_msg_addr();
 }
 
-() store_address(slice new_address) impure inline {
+() start_raffle_process(slice sender_address) impure inline {
+    slice contract_data = get_data().begin_parse();
+    slice owner_address = contract_data~load_msg_addr();
+    slice prev_winner = contract_data~load_msg_addr();
+    int total_num_participants = contract_data~load_int(16);
 
+    ;; Only owner can start the raffle process
+    throw_unless(111, equal_slice_bits(owner_address, sender_address));
+    ;; Number of participants should be equal to const::max_participants to start the raffle process
+    throw_unless(333, total_num_participants == const::max_participants);
+
+    slice winner = raffle();
+    restart_raffle(winner);
+}
+
+() store_address(slice new_address) impure inline {
     slice contract_data = get_data().begin_parse();
 
     ;; Default stored values
@@ -80,8 +96,8 @@ slice raffle() impure inline {
     slice prev_winner = contract_data~load_msg_addr();
     int total_num_participants = contract_data~load_int(16);
 
-    ;; Max number of participants - 5
-    throw_unless(666, total_num_participants < 5);
+    ;; Max number of participants - const::max_participants
+    throw_unless(333, total_num_participants < const::max_participants);
     
     if (total_num_participants == 0){
         cell participants = new_dict();
@@ -97,6 +113,20 @@ slice raffle() impure inline {
         set_data(new_contract_data);
     } else {
         cell participants = contract_data~load_dict();
+        int i = 0;
+        ;; If wallet already participate in the raffle - throw exception
+        while (i < total_num_participants) {
+
+            var (participant_address, flag) = participants.idict_get?(16, i);
+
+            ;; Participants dictionary is corrupted
+            throw_if(666, flag == 0);
+
+            ;; If the participant is already in the dictionary - throw exception
+            throw_if(555, equal_slice_bits(participant_address, new_address));
+            i += 1;
+        }
+
         participants~idict_set(16, total_num_participants, new_address);
 
         cell new_contract_data = begin_cell()
@@ -109,11 +139,6 @@ slice raffle() impure inline {
         set_data(new_contract_data);
     }
 
-    if (total_num_participants == 4) {
-        slice winner = raffle();
-        restart_raffle(winner);
-    }
-
 }
 
 () ownerWithdraw(slice sender_address) impure inline {
@@ -121,15 +146,16 @@ slice raffle() impure inline {
     slice owner_address = contract_data~load_msg_addr();
     slice prev_winner = contract_data~load_msg_addr();
     int num_participants = contract_data~load_int(16);
-    
-    throw_unless(333, num_participants == 0);
 
-    ;; Throw Exception unless the sender is the owner
+    ;; Only owner can withdraw the owner fee
     throw_unless(111, equal_slice_bits(sender_address, owner_address));
+    
+    ;; Throw Exception if the raffle not ended yet
+    throw_unless(333, num_participants == 0);
 
     var [balance, _] = get_balance();
 
-    ;; Throw Exception unless the balance is greater than the minimum balance
+    ;; Throw Exception if contract balance is insufficient to withdraw the owner fee
     throw_unless(444, balance > const::min_balance);
     
     int withdraw_amount = balance - const::min_balance;
@@ -138,13 +164,25 @@ slice raffle() impure inline {
             .store_uint(0x18, 6)
             .store_slice(owner_address)
             .store_coins(withdraw_amount)
-            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 32)
+            .store_slice("Вознаграждение величайшему");
 
     send_raw_message(msg.end_cell(), mode);
 }
 
-;; OPCODES : 0 - deploy, 1 - deposit, 2 - withdraw
+;; OPCODES : 0 - deploy, 1 - deposit, 2 - withdraw, 3 - start raffle
 ;; Msg Body should store 16 bits integer opcode
+;; Exception codes
+;; 111 - Only owner can perform this operation
+;; 222 - Deposit amount is not equal to the required deposit amount
+;; 333 - Number of participants is not equal to const::max_participants (for raffle process), 0 (for owner withdraw) or already equal to const::max_participants (for participant deposit)
+;; 444 - Insufficient contract balance to perform the operation
+;; 555 - Participant is already in the dictionary
+;; 666 - Participants dictionary is corrupted (some values are missing)
+;; 777 - Owner cannot deposit (participate in the raffle)
+;;
+;; 999 - Invalid opcode 
 () recv_internal(int msg_value, cell in_msg, slice in_msg_body) impure {
 
     ;; Parse the message flags
@@ -166,24 +204,37 @@ slice raffle() impure inline {
         slice contract_data = get_data().begin_parse();
         slice owner_address = contract_data~load_msg_addr();
 
+        ;; Only owner can deploy the contract
         throw_unless(111, equal_slice_bits(sender_address, owner_address));
         return();
     }
 
     ;; Deposit for participation in the raffle
     if (op == 1) {
+        ;; Revert transaction if the sender is owner
+        slice contract_data = get_data().begin_parse();
+        slice owner_address = contract_data~load_msg_addr();
+        throw_if(777, equal_slice_bits(sender_address, owner_address));
+
         ;; Revert transaction if the deposit amount is not equal to the required deposit amount (1 ton)
-        throw_unless(555, msg_value == const::deposit);
+        throw_unless(222, msg_value == const::deposit);
 
         store_address(sender_address);
         return();
     }
     
-    ;; Withdraw the owner fee
+    ;; Withdraw the owner fee (only for owner)
     if (op == 2) {
         ownerWithdraw(sender_address);
         return();
     }
+
+    ;; Start raffle process (only for owner)
+    if (op == 3) {
+        start_raffle_process(sender_address);
+        return();
+    }
+
     ;; Throw exception unless valid opcode is provided
     throw(999);
 

@@ -51,6 +51,14 @@ describe('RaffleContract', () => {
 
     it('Raffle works', async () => {
 
+        // Check that owner cannot participate in the raffle
+        const ownerMsgResult = await raffleContract.sendDeposit(ownerWallet.getSender(), toNano('1'));
+        expect(ownerMsgResult.transactions).toHaveTransaction({
+            from: ownerWallet.address,
+            to: raffleContract.address,
+            success: false,
+        });
+
         const ownerBalance = await ownerWallet.getBalance();
         // Deposit from 5 wallets
         let wallets: SandboxContract<TreasuryContract>[] = [];
@@ -58,7 +66,7 @@ describe('RaffleContract', () => {
 
         for (let i = 0; i < 5; i++) {
             let wallet = await blockchain.treasury('wallet' + i);
-            wallet_balances.push([wallet.address, await wallet.getBalance() - toNano('1')]);
+            wallet_balances.push([wallet.address, (await wallet.getBalance()) - toNano('1')]);
 
             const msgResult = await raffleContract.sendDeposit(wallet.getSender(), toNano('1'));
             expect(msgResult.transactions).toHaveTransaction({
@@ -66,7 +74,7 @@ describe('RaffleContract', () => {
                 to: raffleContract.address,
                 success: true,
             });
-            
+
             const balance_response = await raffleContract.getContractBalance();
             const balance = Number(fromNano(balance_response.contract_balance));
             console.log('Contract balance = ', balance);
@@ -74,22 +82,50 @@ describe('RaffleContract', () => {
             wallets.push(wallet);
         }
 
-        // Check if contract rewarded the winner with 4 ton
+        // Check if contract has 5 ton
         const balance_response = await raffleContract.getContractBalance();
         const balance = Number(fromNano(balance_response.contract_balance));
-        expect(balance).toBeCloseTo(1);
+        expect(balance).toBeCloseTo(5, 1);
 
         // Check if the number of participants is 0
         const participants_response = await raffleContract.getNumParticipants();
         const participants_num = participants_response.num_participants;
-        expect(participants_num).toEqual(0);
+        expect(participants_num).toEqual(5);
 
+        // Transaction must reject because there are maximum participants
+        let msgResult = await raffleContract.sendDeposit(wallets[0].getSender(), toNano('1'));
+        expect(msgResult.transactions).toHaveTransaction({
+            from: wallets[0].address,
+            to: raffleContract.address,
+            success: false,
+        });
 
-        // Check has last winner got 1 ton
+        // Only owner can start raffle
+        msgResult = await raffleContract.sendStartRaffleProcess(wallets[1].getSender(), toNano('0.01'));
+        expect(msgResult.transactions).toHaveTransaction({
+            from: wallets[1].address,
+            to: raffleContract.address,
+            success: false,
+        });
+
+        // Start raffle by owner
+        msgResult = await raffleContract.sendStartRaffleProcess(ownerWallet.getSender(), toNano('0.01'));
+        expect(msgResult.transactions).toHaveTransaction({
+            from: ownerWallet.address,
+            to: raffleContract.address,
+            success: true,
+        });
+
+        // Check that no more participants are in the raffle
+        const participants_response_after_raffle = await raffleContract.getNumParticipants();
+        const participants_num_after_raffle = participants_response_after_raffle.num_participants;
+        expect(participants_num_after_raffle).toEqual(0);
+
+        // Check has last winner got 4 ton
         const recent_winner: Address = (await raffleContract.getRecentWinner()).recent_winner;
         let winner_found = false;
-        
-        for (let i = 0; i < 11; i++) {
+
+        for (let i = 0; i < 5; i++) {
             let wallet_tuple = wallet_balances[i];
 
             if (wallet_tuple[0].toString() === recent_winner.toString()) {
@@ -108,7 +144,9 @@ describe('RaffleContract', () => {
 
         // Contract Balance before withdraw
         const contract_balance_response_before_withdraw = await raffleContract.getContractBalance();
-        const contract_balance_before_withdraw = Number(fromNano(contract_balance_response_before_withdraw.contract_balance));
+        const contract_balance_before_withdraw = Number(
+            fromNano(contract_balance_response_before_withdraw.contract_balance),
+        );
 
         // Owner Balance before withdraw
         const ownerBalanceBeforeWithdraw = Number(fromNano(await ownerWallet.getBalance()));
@@ -117,18 +155,19 @@ describe('RaffleContract', () => {
         expect(msg_result.transactions).toHaveTransaction({
             from: raffleContract.address,
             to: ownerWallet.address,
-            success: true
+            success: true,
         });
 
         // Owner Balance after withdraw
         const ownerBalanceAfterWithdraw = Number(fromNano(await ownerWallet.getBalance()));
-        const ownerDifferenceBalance = ownerBalanceAfterWithdraw-ownerBalanceBeforeWithdraw;
+        const ownerDifferenceBalance = ownerBalanceAfterWithdraw - ownerBalanceBeforeWithdraw;
         expect(ownerDifferenceBalance).toBeCloseTo(1, 1);
 
         // Contract Balance after withdraw
         const contract_balance_response_after_withdraw = await raffleContract.getContractBalance();
-        const contract_balance_after_withdraw = Number(fromNano(contract_balance_response_after_withdraw.contract_balance));
+        const contract_balance_after_withdraw = Number(
+            fromNano(contract_balance_response_after_withdraw.contract_balance),
+        );
         expect(contract_balance_after_withdraw).toBeCloseTo(0.01);
     });
-
 });

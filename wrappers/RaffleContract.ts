@@ -60,6 +60,14 @@ export class RaffleContract implements Contract {
         });
     }
 
+    async sendStartRaffleProcess(provider: ContractProvider, via: Sender, value: bigint) {
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeInt(3, 16).endCell(),
+        });
+    }
+
     // GET Functions
 
     async getOwner(provider: ContractProvider) {
