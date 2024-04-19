@@ -1,4 +1,12 @@
 # Raffle
+My first smart contract on TON blockchain developed on FunC
+
+## Description
+The objective of this project is to develop a contract that enables N participants to each deposit 1 TON into the contract. Once all N participants have made their deposits, the contract will randomly select one participant and transfer him N-1 TONs.
+
+Owner wallet is pre-defined in the contract and can be used to deploy the contract and to call the `start_raffle_process` function. The `start_raffle_process` function will be executable only when number of participants will be equal to maximum number N. The owner can always withdraw `owner_fee` from the contract, but only after the current raffle process is completed (number of participants equal to zero).
+
+Owner is not able to participate in the raffle!!!
 
 ## Project structure
 
