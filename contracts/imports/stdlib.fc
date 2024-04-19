@@ -508,7 +508,6 @@ tuple parse_addr(slice s) asm "PARSEMSGADDR";
   # Dictionary primitives
 -}
 
-
 ;;; Sets the value associated with [key_len]-bit key signed index in dictionary [dict] to [value] (cell),
 ;;; and returns the resulting dictionary.
 cell idict_set_ref(cell dict, int key_len, int index, cell value) asm(value index dict key_len) "DICTISETREF";

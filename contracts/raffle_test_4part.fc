@@ -1,9 +1,8 @@
 #include "imports/stdlib.fc";
 
-const int const::deposit = 1000000000;
+const int const::deposit = 1040000000;
 const int const::owner_fee = 1000000000;
 const int const::min_balance = 10000000;
-const int const::winner_reward = 4000000000;
 
 ;; storage scheme
 ;; 1 - owner address
@@ -24,7 +23,7 @@ const int const::winner_reward = 4000000000;
 
     throw_unless(444, balance > const::min_balance + const::owner_fee);
 
-    int withdraw_amount = min(const::winner_reward, balance - const::min_balance - const::owner_fee);
+    int withdraw_amount = min(3000000000, balance - const::min_balance - const::owner_fee);
 
     int mode = 0;
     var msg = begin_cell()
@@ -37,7 +36,7 @@ const int const::winner_reward = 4000000000;
 }
 
 slice raffle() impure inline {
-    randomize_lt(); int winner = rand(11);
+    randomize_lt(); int winner = rand(4);
     int i = 0;
 
     slice contract_data = get_data().begin_parse();
@@ -48,7 +47,7 @@ slice raffle() impure inline {
     cell participants = contract_data~load_dict();
 
     builder winner_builder = begin_cell();
-    while (i < 5) {
+    while (i < 4) {
 
         var (participant_address, flag) = participants.idict_get?(16, i);
 
@@ -59,7 +58,7 @@ slice raffle() impure inline {
         if (i == winner) {
             winner_builder~store_slice(participant_address); 
             reward_winner(participant_address);
-            i = 5;
+            i = 11;
         } else {
             i = i + 1;
         }
@@ -80,8 +79,8 @@ slice raffle() impure inline {
     slice prev_winner = contract_data~load_msg_addr();
     int total_num_participants = contract_data~load_int(16);
 
-    ;; Max number of participants - 5
-    throw_unless(666, total_num_participants < 5);
+    ;; Max number of participants - 11
+    throw_unless(666, total_num_participants < 4);
     
     if (total_num_participants == 0){
         cell participants = new_dict();
@@ -109,7 +108,7 @@ slice raffle() impure inline {
         set_data(new_contract_data);
     }
 
-    if (total_num_participants == 4) {
+    if (total_num_participants == 3) {
         slice winner = raffle();
         restart_raffle(winner);
     }
@@ -144,7 +143,7 @@ slice raffle() impure inline {
 }
 
 ;; OPCODES : 0 - deploy, 1 - deposit, 2 - withdraw
-;; Msg Body should store 16 bits integer opcode
+;; Msg Body should store 3 bits integer opcode
 () recv_internal(int msg_value, cell in_msg, slice in_msg_body) impure {
 
     ;; Parse the message flags
@@ -161,7 +160,7 @@ slice raffle() impure inline {
     slice sender_address = cs~load_msg_addr();
     int op = in_msg_body~load_int(16);
     
-    ;; Just for deploy (only for owner)
+    ;; Just for deploy
     if (op == 0) {
         slice contract_data = get_data().begin_parse();
         slice owner_address = contract_data~load_msg_addr();
@@ -172,7 +171,7 @@ slice raffle() impure inline {
 
     ;; Deposit for participation in the raffle
     if (op == 1) {
-        ;; Revert transaction if the deposit amount is not equal to the required deposit amount (1 ton)
+        ;; Revert transaction if the deposit amount is not equal to the required deposit amount (0.1 ton)
         throw_unless(555, msg_value == const::deposit);
 
         store_address(sender_address);

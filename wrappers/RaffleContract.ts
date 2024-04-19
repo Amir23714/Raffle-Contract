@@ -1,7 +1,7 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
 const INITIAL_NUM_PARTICIPANTS = 0;
-const MIN_DEPOSIT: bigint = 100000000n;
+const MIN_DEPOSIT: bigint = 1000000000n;
 
 export type RaffleContractConfig = {
     owner_address: Address;
@@ -36,7 +36,7 @@ export class RaffleContract implements Contract {
         await provider.internal(via, {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
-            body: beginCell().storeInt(1, 16).endCell(),
+            body: beginCell().storeInt(0, 16).endCell(),
         });
     }
 
@@ -91,14 +91,6 @@ export class RaffleContract implements Contract {
 
         return {
             contract_balance: stack.readBigNumber(),
-        };
-    }
-
-    async getFirstAddress(provider: ContractProvider) {
-        const { stack } = await provider.get('get_first_addr', []);
-
-        return {
-            first_address: stack.readAddress(),
         };
     }
 }
