@@ -21,6 +21,9 @@
 
 `npx blueprint run` or `yarn blueprint run`
 
+### Run onchain test
+`npm run onchaintest::TESTNET` or `npm run onchaintest::MAINNET`
+
 ### Add a new contract
 
 `npx blueprint create ContractName` or `yarn blueprint create ContractName`
